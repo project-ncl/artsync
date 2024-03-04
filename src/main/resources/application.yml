@@ -16,9 +16,10 @@ indy:
   endpoint-uri: https://indy.com/
 
 aws:
-  token-duration: PT900S
   region: "us-east-1"
   domain: "pnc-region"
+  owner: "21312323"
+  token-duration: PT900S
   credentials:
     # DEFAULT For getting from ENV variables, sys-properties or ~/.aws/credentials file
     # https://docs.quarkiverse.io/quarkus-amazon-services/dev/amazon-s3.html#_configuring_s3_clients

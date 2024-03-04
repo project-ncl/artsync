@@ -335,13 +335,43 @@ public class AWSClient {
                                                 String awsRepoUrl) {
         Set<MavenAsset> noResult = new HashSet<>(assets);
         results.assets().forEach(noResult::remove);
-        if (noResult.isEmpty()) {
-            // put random successful asset just to mark everything as failure
-            // (problem can be in deploying metadata when all artifacts were deployed)
-            noResult.add(assets.getFirst());
+
+        Results<MavenAsset> toReturn;
+        if (!noResult.isEmpty()) {
+            toReturn = results;
+        } else {
+            // rewrite random successful asset just to mark everything as failure
+            // (problem can be in deploying metadata when all artifacts were successfully deployed)
+            MavenAsset scapegoat;
+            if (!results.successes().isEmpty()) {
+                var randomSuccess = results.successes().getFirst();
+                scapegoat = randomSuccess.result().asset();
+
+                var successes = new ArrayList<>(results.successes());
+                successes.remove(randomSuccess);
+
+                // Redo Results with Extra space
+                toReturn = new Results<>();
+                successes.forEach(toReturn::addSuccess);
+                results.errors().forEach(toReturn::addError);
+            } else {
+                var randomError = results.errors().getFirst();
+                scapegoat = randomError.context();
+
+                var errors = new ArrayList<>(results.errors());
+                errors.remove(randomError);
+
+                // Redo Results with Extra space
+                toReturn = new Results<>();
+                results.successes().forEach(toReturn::addSuccess);
+                errors.forEach(toReturn::addError);
+            }
+
+            noResult.add(scapegoat);
         }
+
         noResult.forEach(ass -> {
-            results.addError(switch (e.getCause()) {
+            toReturn.addError(switch (e.getCause()) {
                 case null -> new GenericError.UncaughtException<>(ass, e);
                 default -> parseException(e.getCause(), repositoryId, ass.generateDeployUrlFrom(awsRepoUrl), ass);
             });
