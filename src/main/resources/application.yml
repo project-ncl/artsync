@@ -1,0 +1,128 @@
+pnc:
+  rate-limit:
+    rate-of-requests: 200
+    request-timeout: 1000000
+    time-constraint: PT1S
+  page-size: 50
+  service-name: "pnc-backend"
+  endpoint-uri: https://pnc.com/
+
+indy:
+  service-name: "indy-backend"
+  rate-limit:
+    rate-of-requests: 100
+    request-timeout: 1000000
+    time-constraint: PT1S
+  endpoint-uri: https://indy.com/
+
+aws:
+  token-duration: PT900S
+  region: "us-east-1"
+  domain: "pnc-region"
+  credentials:
+    # DEFAULT For getting from ENV variables, sys-properties or ~/.aws/credentials file
+    # https://docs.quarkiverse.io/quarkus-amazon-services/dev/amazon-s3.html#_configuring_s3_clients
+    type: DEFAULT
+#    static-provider:
+#      access-key-id:
+#      secret-access-key:
+  service-name: "aws-backend"
+  rate-limit:
+    rate-of-requests: 100
+    request-timeout: 1000000
+    time-constraint: PT1S
+  retry:
+    enabled: true
+    max-attempts: 5
+  #  http:
+#    tls-trust-managers-provider:
+#      type: TRUST-ALL
+  dry-run: false
+  subprocess-concurrency-limit: 10
+
+artsync:
+  artifacts:
+    upload-filter:
+      maven:
+      - ".*/maven-metadata\\.xml$"
+      - ".*\\.sha1$"
+      - ".*\\.sha256$"
+      - ".*\\.sha512$"
+      - ".*\\.md5$"
+      - ".*\\.asc$"
+      - ".*\\.module$"
+      - ".*/([^/]+)/ivy-\\1\\.xml$"
+      npm:
+      - "^/(?:@[^/]+/)?[^/]+$"
+      - "^/(?:@[^/]+/)?[^/]+/[^/]+$"
+    source-filter:
+    - "maven:remote:koji-.+"
+    - "maven:remote:mrrc-ga.*"
+    - "maven:group:build-.+"
+    # Comment if on prod, it's just annoying on stage
+    #- "maven:group:builds-untested"
+    allowed-types:
+    - maven
+    - npm
+  repositories:
+    indy-aws-mappings:
+      "pnc-builds": "test-repository"
+      "shared-imports": "test-repository-2"
+    generate-generic-proxy-repositories: true
+    generate-settings-xml: true
+    settings-generation-directory: "/tmp/settings"
+  download-root-dir: "/tmp/downloads"
+  override-indy-url: false
+  clean-artifacts: true
+  pipeline-concurrency-limit: 100
+  cron:
+    schedule: '0/2 * * ? * * *'
+    job-size: 300
+    batch-size: 10
+    start-paused: true
+
+
+quarkus:
+  container:
+    name: artsync
+  rest-client:
+    pnc-rest:
+      uri: ${pnc.endpoint-uri}
+      capture-stacktrace: true
+      read-timeout: 300000
+    indy-rest:
+      uri: ${indy.endpoint-uri}
+      capture-stacktrace: true
+      read-timeout: 300000
+  log:
+    console:
+      json: false
+    category:
+      "org.jboss.pnc":
+        level: INFO
+#      "io.quarkus":
+#        level: TRACE
+#      "io.quarkus.scheduler":
+#        level: INFO
+#      "org.jboss.resteasy":
+#        level: TRACE
+#      "org.eclipse":
+#        level: TRACE
+    level: INFO
+    min-level: TRACE
+  tls:
+    trust-all: true
+  datasource:
+    db-kind: postgresql
+  hibernate-orm:
+    jdbc:
+      statement-batch-size: 100
+    database:
+#      generation: drop-and-create
+      generation: validate
+    log:
+      sql: false
+      format-sql: true
+      bind-parameters: false
+  transaction-manager:
+    default-transaction-timeout: PT10m
