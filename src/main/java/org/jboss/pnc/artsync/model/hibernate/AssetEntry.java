@@ -125,6 +125,7 @@ public class AssetEntry extends PanacheEntity {
 
     @Enumerated(EnumType.STRING)
     public Category errorCategory;
+    public boolean consistentChecksums = false;
     //endregion
 
     //region Constructors

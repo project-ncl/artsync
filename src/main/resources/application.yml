@@ -127,3 +127,5 @@ quarkus:
       bind-parameters: false
   transaction-manager:
     default-transaction-timeout: PT10m
+  package:
+    user-configured-ignored-entries: application-local.yml
