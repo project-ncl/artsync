@@ -154,6 +154,7 @@ public class AssetEntry extends PanacheEntity {
         this.indyRepository = toStoreKey(asset.getSourceRepository())
             .orElse(parseIndyRepository(asset.getSourceRepository()));
         this.sourceUrl = asset.getDownloadURI().toString();
+        this.consistentChecksums = false;
     }
 
     public AssetEntry(UploadResult.Error<? extends Asset> error) {

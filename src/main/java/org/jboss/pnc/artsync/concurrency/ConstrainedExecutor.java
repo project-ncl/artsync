@@ -44,8 +44,8 @@ public class ConstrainedExecutor implements ConstrainedExecutorService, Constrai
         this.delegate = delegate;
         this.scheduler = scheduler;
         RateLimiterConfig.Builder config = RateLimiterConfig.custom()
-            .limitRefreshPeriod(applicationConfig.rateLimit().timeConstraint())
-            .limitForPeriod(applicationConfig.rateLimit().rateOfRequests())
+            .limitRefreshPeriod(applicationConfig.rateLimit().timeConstraint().dividedBy(2))
+            .limitForPeriod(applicationConfig.rateLimit().rateOfRequests() / 2)
             .timeoutDuration(applicationConfig.rateLimit().requestTimeout());
         if (isRateLimited != null) {
             config.drainPermissionsOnResult(isRateLimited);

@@ -304,7 +304,7 @@ public class AWSClient {
 
         gav.assets().forEach(ass -> artifactEventListener.register(assetDir.resolve(ass.getFilename()).toFile(), ass, results));
 
-        return executor.supplyAsync((gav.assets().size() * 4) + 2,
+        return executor.supplyAsync(gav.assets().size() + 4,
             () -> startAndHandle(gav, awsRepoURL, repositoryId, request, results))
             .whenComplete((result, thr) -> gav.assets().forEach(ass -> artifactEventListener.unregister(assetDir.resolve(ass.getFilename()).toFile())))
             .thenApply((result) -> verifyResult(result, gav.assets(), new CircularFifoQueue<>(), awsRepoURL, repositoryId));
