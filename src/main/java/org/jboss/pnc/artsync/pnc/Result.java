@@ -17,9 +17,10 @@ public sealed interface Result<T> permits Result.Error, Result.Success {
             record SSLError(String message) implements Result.Error.ClientError {}
         }
 
-        sealed interface ServerError extends Result.Error permits ServerError.SystemError, ServerError.UnknownError {
+        sealed interface ServerError extends Result.Error permits ServerError.ContentCorrupted, ServerError.SystemError, ServerError.UnknownError {
             record SystemError(String description) implements Result.Error.ServerError {}
             record UnknownError(Response response, String description) implements Result.Error.ServerError {}
+            record ContentCorrupted(String filePath) implements Result.Error.ServerError {}
         }
         record UncaughtException(Throwable e) implements Result.Error {}
     }

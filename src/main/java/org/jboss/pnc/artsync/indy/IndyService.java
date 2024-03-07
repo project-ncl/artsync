@@ -2,7 +2,6 @@ package org.jboss.pnc.artsync.indy;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.file.FileSystem;
-import io.vertx.core.file.OpenOptions;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.commonjava.indy.folo.dto.TrackedContentDTO;
 import org.commonjava.indy.folo.dto.TrackedContentEntryDTO;
@@ -73,7 +72,7 @@ public class IndyService {
      * @param uriPathMap uri file
      * @return paths to files
      */
-    public CompletableFuture<ResultAgg<File>> downloadByPath(Map<String, File> uriPathMap, boolean overrideIndyUrl) {
+    public CompletableFuture<ResultAgg<File>> downloadByPath(Map<String, FileSize> uriPathMap, boolean overrideIndyUrl) {
         ResultAgg<File> agg = new ResultAgg<>(new CopyOnWriteArrayList<>(), new CopyOnWriteArrayList<>());
 
         validFilenames(uriPathMap, agg);
@@ -86,9 +85,12 @@ public class IndyService {
 
         for (var entry : uriPathMap.entrySet()) {
             futures.add(
-                fs.mkdirs(entry.getValue().getParent()).toCompletionStage()
-                    .thenCompose(destination -> client.downloadFile(entry.getKey(), entry.getValue().getPath(), overrideIndyUrl))
-                    .thenApply(r -> returnFile(r, entry.getValue()))
+                fs.mkdirs(entry.getValue().file().getParent()).toCompletionStage()
+                    .thenCompose(destination -> client.downloadFile(entry.getKey(),
+                        entry.getValue().file().getPath(),
+                        entry.getValue().size(),
+                        overrideIndyUrl))
+                    .thenApply(r -> returnFile(r, entry.getValue().file()))
                     .whenComplete((r, t) -> handleResult(agg, r, t))
                     .toCompletableFuture());
         }
@@ -105,9 +107,10 @@ public class IndyService {
             return CompletableFuture.completedFuture(new ResultAgg<>(List.of(), List.of()));
         }
 
-        Map<String, File> urlPathMap = new HashMap<>();
+        Map<String, FileSize> urlPathMap = new HashMap<>();
         for (T asset : projectVersion.assets()) {
-            urlPathMap.put(asset.getDownloadURI().toString(), versionRootDir.resolve(asset.getFilename()).toFile());
+            File file = versionRootDir.resolve(asset.getFilename()).toFile();
+            urlPathMap.put(asset.getDownloadURI().toString(), new FileSize(file, asset.getSize()));
         }
 
         return downloadByPath(urlPathMap, overrideIndyUrl);
@@ -120,12 +123,12 @@ public class IndyService {
         };
     }
 
-    private void validFilenames(Map<String, File> uriPathMap, ResultAgg<File> agg) {
+    private void validFilenames(Map<String, FileSize> uriPathMap, ResultAgg<File> agg) {
         uriPathMap.forEach((uri, file) -> {
             var uriuri = URI.create(uri);
             String[] split = uriuri.getPath().split("/");
             String filenameInUri = split[split.length-1];
-            String filenameInDirectory = file.getName();
+            String filenameInDirectory = file.file().getName();
 
             if (!filenameInDirectory.equals(filenameInUri)) {
                 agg.errors().add(new Result.Error.UncaughtException(new IllegalArgumentException("Filenames do not match")));

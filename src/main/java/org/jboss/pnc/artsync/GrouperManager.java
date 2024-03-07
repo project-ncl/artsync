@@ -413,6 +413,8 @@ public class GrouperManager {
                 new UploadResult.Error.IndyError.ServerError<>(context, "Authorization Error");
             case Result.Error.ClientError.ServerUnreachable server ->
                 new UploadResult.Error.IndyError.ServerError<>(context, "Can't reach Indy");
+            case Result.Error.ServerError.ContentCorrupted(String filePath) ->
+                new GenericError.CorruptedData<>(context, "Download " + filePath + " corrupted. Check download URL.");
         };
     }
 

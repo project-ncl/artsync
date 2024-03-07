@@ -11,6 +11,7 @@ import org.jboss.pnc.artsync.BuildArtifactCollector;
 import org.jboss.pnc.artsync.GrouperManager;
 import org.jboss.pnc.artsync.UploadCronJob;
 import org.jboss.pnc.artsync.aws.AWSService;
+import org.jboss.pnc.artsync.indy.FileSize;
 import org.jboss.pnc.artsync.indy.IndyService;
 import org.jboss.pnc.artsync.model.Asset;
 import org.jboss.pnc.artsync.model.ProjectAssets;
@@ -101,8 +102,8 @@ public class TestAPIImpl implements TestAPI {
     @Override
     public List<String> fetchFromIndy(boolean override, Map<String, String> uriPathMap) {
         ResultAgg<File> agg = indy.downloadByPath(uriPathMap.entrySet().stream()
-            .collect(Collectors.toMap(entry -> entry.getKey(),
-                    entry -> Path.of(entry.getValue()).toFile()
+            .collect(Collectors.toMap(Map.Entry::getKey,
+                    entry -> new FileSize(Path.of(entry.getValue()).toFile(), 0)
                 )
             ), override).join();
         for (var error : agg.errors()) {

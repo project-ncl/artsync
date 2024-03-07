@@ -69,6 +69,7 @@ public class IndyClient {
                     case Integer i when i >= 500 -> true;
                     default -> false;
                 };
+                case ServerError.ContentCorrupted contentCorrupted -> true;
 
                 // DO NOT RETRY
                 case SSLError ssl -> false;
@@ -85,7 +86,7 @@ public class IndyClient {
             .handle(this::restResponseHandler);
     }
 
-    public CompletableFuture<Result<String>> downloadFile(String uri, String filePath, boolean overrideIndyUrl) {
+    public CompletableFuture<Result<String>> downloadFile(String uri, String filePath, long expectedSize, boolean overrideIndyUrl) {
         // FIXME Error handling + maybe record response (maybe in the same handler)
         URI uriuri = URI.create(uri);
 
@@ -100,6 +101,17 @@ public class IndyClient {
                     .ssl(uriuri.getScheme().equals("https"))
                     .send().toCompletionStage())
             .handle((r,e) -> vertxResponseHandler(r, uri, e))
+            .thenApply((res) -> {
+                Result<Void> result = res;
+                long size = fs.propsBlocking(filePath).size();
+                if (size != expectedSize) {
+                    log.error("Indy: File {} has size {} when expected {}", filePath, size, expectedSize);
+                    if (size == 0 && res instanceof Result.Success<Void>) {
+                        result = new ServerError.ContentCorrupted(filePath);
+                    };
+                }
+                return result;
+            })
             .thenApply(response -> convertResult(uri, response))
             .toCompletableFuture().join()
         );

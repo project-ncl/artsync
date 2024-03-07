@@ -94,9 +94,11 @@ RUN microdnf -y update && \
     && microdnf clean all
 
 EXPOSE 8080
-RUN mkdir "/tmp/downloads"
-RUN mkdir "/tmp/settings"
 USER 185
+RUN mkdir "/tmp/downloads" && \
+    chmod 777 "/tmp/downloads" && \
+    mkdir "/tmp/settings" && \
+    chmod 777 "/tmp/settings"
 ENV JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
 ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"
 
