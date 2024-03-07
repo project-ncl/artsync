@@ -88,14 +88,16 @@ public class IndyClient {
 
     public CompletableFuture<Result<String>> downloadFile(String uri, String filePath, long expectedSize, boolean overrideIndyUrl) {
         // FIXME Error handling + maybe record response (maybe in the same handler)
-        URI uriuri = URI.create(uri);
+        URI asserUri = URI.create(uri);
+
+        URI uriuri = overrideIndyUrl ? config.indyURI().resolve(asserUri.getRawPath()) : asserUri;
 
         OpenOptions brandNew = new OpenOptions().setCreate(true).setTruncateExisting(true);
 
         return executor.supplyAsync(() -> fs.open(filePath, brandNew).toCompletionStage()
             .thenCompose(openFile ->
                 webClient.get(getPort(uriuri),
-                        overrideIndyUrl ? config.indyURI().getHost() : uriuri.getHost(),
+                        uriuri.getHost(),
                         uriuri.getRawPath())
                     .as(BodyCodec.pipe(openFile))
                     .ssl(uriuri.getScheme().equals("https"))
