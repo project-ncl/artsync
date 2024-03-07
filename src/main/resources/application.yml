@@ -133,3 +133,6 @@ quarkus:
     default-transaction-timeout: PT10m
   package:
     user-configured-ignored-entries: application-local.yml
+  swagger-ui:
+    enable: true
+    always-include: true
