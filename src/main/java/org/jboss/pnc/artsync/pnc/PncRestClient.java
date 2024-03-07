@@ -25,7 +25,7 @@ public interface PncRestClient {
 
     @GET
     @Path("/builds")
-    @ClientQueryParam(name = "sort", value = "asc=endTime")
+    @ClientQueryParam(name = "sort", value = "=asc=endTime")
     Page<Build> getBuilds(@QueryParam("pageIndex") int pageIndex,
                                           @QueryParam("q") String query);
 

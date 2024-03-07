@@ -53,7 +53,7 @@ public class PncClient {
 
             String query = "temporaryBuild==false;status==SUCCESS";
             if (since != null) {
-                query = query + ";submitTime>" + since.format(DateTimeFormatter.ISO_DATE_TIME);
+                query = query + ";submitTime>" + since.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
             }
             Page<Build> builds = restClient.getBuilds(pageIndex, query);
             LOG.trace("PNC-builds-returned: Page {}, Thread: virt: {}, name: {}", pageIndex, Thread.currentThread().isVirtual(), Thread.currentThread().getName());

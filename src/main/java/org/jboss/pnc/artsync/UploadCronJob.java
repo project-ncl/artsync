@@ -4,6 +4,7 @@ import io.quarkus.runtime.Startup;
 import io.quarkus.scheduler.Scheduled;
 import io.quarkus.scheduler.Scheduled.ApplicationNotRunning;
 import io.quarkus.scheduler.Scheduler;
+import io.smallrye.common.annotation.Blocking;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +46,7 @@ public class UploadCronJob {
         cron = "${artsync.cron.schedule}",
         concurrentExecution = Scheduled.ConcurrentExecution.SKIP,
         skipExecutionIf = CacheNotInitialized.class)
+    @Blocking
     public void processBuildsJob() {
         try {
             running = true;
