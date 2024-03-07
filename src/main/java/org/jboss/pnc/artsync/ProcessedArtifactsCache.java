@@ -40,10 +40,12 @@ public class ProcessedArtifactsCache implements HealthCheck {
             count = AssetEntry.countSuccessfulIdentifiers();
             this.count.set(count);
             if (count == 0) {
+                finished.set(true);
                 return;
             }
         } catch (NoResultException e) {
             log.info("No identifiers found in DB.");
+            finished.set(true);
             return;
         }
         int pageSize;
