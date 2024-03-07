@@ -104,7 +104,7 @@ public class IndyClient {
             .thenApply((res) -> {
                 Result<Void> result = res;
                 long size = fs.propsBlocking(filePath).size();
-                if (size != expectedSize) {
+                if (size != expectedSize && !(res instanceof NotFound)) {
                     log.error("Indy: File {} has size {} when expected {}", filePath, size, expectedSize);
                     if (size == 0 && res instanceof Result.Success<Void>) {
                         result = new ServerError.ContentCorrupted(filePath);
