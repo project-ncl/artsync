@@ -29,7 +29,7 @@ public final class MavenAsset extends Asset {
 //            case Integer i when i.equals(3) -> new SimpleArtifactRef(parts[0], parts[1], parts[2], null, null);
             case Integer i when i.equals(4) -> new SimpleArtifactRef(parts[0], parts[1], parts[3], parts[2], null);
             case Integer i when i.equals(5) -> new SimpleArtifactRef(parts[0], parts[1], parts[3], parts[2], parts[4]);
-            default -> throw new IllegalArgumentException("Illegal identifier format");
+            default -> throw new IllegalArgumentException("Illegal identifier format: " + identifier);
         };
     }
 
@@ -42,7 +42,8 @@ public final class MavenAsset extends Asset {
                     case null -> Label.TOP_JAR;
                     default -> Label.JAR;
                 };
-            case "exe", "properties", "json", "zip", "tar.gz", "ear", "war" -> Label.OTHER;
+            case "exe", "properties", "json", "zip", "tar.gz", "ear", "war", "txt", "tar.bz2", "xml", "signature"
+                -> Label.OTHER;
             case null -> throw new IllegalArgumentException("Maven Type cannot be null");
             default ->  {
                 log.error("New Classifier '{}' encountered. Will this cause an issue? Full identifier: '{}'",

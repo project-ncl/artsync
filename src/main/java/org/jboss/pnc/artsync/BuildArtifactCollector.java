@@ -17,6 +17,7 @@ import org.jboss.pnc.artsync.model.hibernate.BuildStat;
 import org.jboss.pnc.artsync.pnc.PncService;
 import org.jboss.pnc.dto.Artifact;
 import org.jboss.pnc.dto.Build;
+import org.jboss.pnc.enums.RepositoryType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,6 +76,15 @@ public class BuildArtifactCollector {
     private List<Asset> convertToAssets(Map<String, ArtTuple> tuples) {
         List<Asset> uploads = new ArrayList<>(tuples.size());
         for (var artifact : tuples.values()) {
+            // Avoid GProxy artifacts that were promoted to shared-imports
+            if (artifact.pnc().getIdentifier().startsWith("http")
+                && artifact.pnc().getTargetRepository().getRepositoryType() != RepositoryType.GENERIC_PROXY){
+                // TODO recreate as GPROXY artifact
+                LOG.error("GPROXY ARTIFACT acting as MAVEN id: {}, identifier: {}", artifact.pnc().getId(),
+                    artifact.pnc().getIdentifier());
+                continue;
+            }
+
             uploads.add(convertToAsset(artifact));
         }
         return uploads;
