@@ -59,7 +59,7 @@ public class Job extends PanacheEntity {
      * @return
      */
     public static Optional<Job> getLastFinishedJob() {
-        return find("from Job",
+        return find("from Job where lastProcessed is not null",
             Sort.by("startTime", Descending, NULLS_LAST)
                 .and("endTime", Descending, NULLS_LAST))
             .firstResultOptional();

@@ -4,6 +4,7 @@ import io.quarkus.virtual.threads.VirtualThreads;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Response;
 import lombok.Getter;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.jboss.pnc.artsync.concurrency.ConstrainedExecutor;
@@ -17,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLException;
+import java.net.SocketException;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.CompletableFuture;
@@ -44,7 +46,31 @@ public class PncClient {
                      ScheduledExecutorService scheduler) {
         this.restClient = restClient;
         this.config = config;
-        this.executor = new ConstrainedExecutor(delegate, scheduler, config, (ign) -> false, null, null);
+        this.executor = new ConstrainedExecutor(delegate, scheduler, config, (ign) -> false, null, this::retryOn);
+    }
+
+    private boolean retryOn(Object response) {
+        if (response instanceof Result.Error err) {
+            LOG.warn("Error from PNC: " + err.getClass().getSimpleName());
+            return switch (err) {
+                // RETRY
+                case ServerError.SystemError se -> true;
+                case ClientError.ClientTimeout ct -> true;
+                case ClientError.ServerUnreachable su -> true;
+                case ServerError.UnknownError(Response r, String desc) -> switch (Integer.valueOf(r.getStatus())) {
+                    case Integer i when i >= 500 -> true;
+                    default -> false;
+                };
+                case ServerError.ContentCorrupted contentCorrupted -> true;
+
+                // DO NOT RETRY
+                case ClientError.SSLError ssl -> false;
+                case ClientError.AuthorizationError ae -> false;
+                case ClientError.NotFound nf -> false;
+                case UncaughtException ue -> false;
+            };
+        }
+        return false;
     }
 
     public CompletableFuture<Result<Page<Build>>> getBuilds(ZonedDateTime since, int pageIndex) {
@@ -75,9 +101,11 @@ public class PncClient {
                         // internal rest client error
                         case ProcessingException proc -> switch (proc.getCause()) {
                             case SSLException ssle -> new ClientError.SSLError(ssle.getMessage());
+                            case SocketException socketException -> new SystemError(socketException.getMessage());
                             case null -> new UncaughtException(proc);
                             default -> new UncaughtException(proc.getCause());
                         };
+                        case SocketException socketException -> new SystemError(socketException.getMessage());
                         case null -> new UncaughtException(e);
                         default -> new UncaughtException(e.getCause());
                     };

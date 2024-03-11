@@ -9,6 +9,10 @@ import org.jboss.pnc.artsync.model.hibernate.BuildStat;
 import org.jboss.pnc.dto.TargetRepository;
 
 import java.net.URI;
+import java.util.Set;
+
+import static java.util.stream.Collectors.toSet;
+import static java.util.stream.Stream.concat;
 
 @Getter
 @SuperBuilder(toBuilder = true)
@@ -17,12 +21,15 @@ public final class MavenAsset extends Asset {
 
     private final SimpleArtifactRef mvnIdentifier = computeMvn(getIdentifier());
     private final Label label = computeLabel(mvnIdentifier);
+    public static final Set<String> uncommonTypes = Set.of("exe", "xsd", "xjb", "yml", "properties", "json", "zip",
+        "tar.gz", "ear", "war", "txt", "tar.bz2", "xml", "signature", "kar", "empty", "html", "pdf");
+
 
     public MavenAsset(String identifier, String artifactId, String filename, long size, String md5, String sha1, String sha256, URI downloadURI, TargetRepository sourceRepository, String originBuildID, BuildStat processingBuildID) {
         super(identifier, artifactId, RepositoryType.MAVEN, filename, size, md5, sha1, sha256, downloadURI, sourceRepository, originBuildID, processingBuildID);
     }
 
-    private SimpleArtifactRef computeMvn(String identifier) {
+    public static SimpleArtifactRef computeMvn(String identifier) {
         String[] parts = identifier.split(":");
         return switch (Integer.valueOf(parts.length)) {
             // 3 parts should be illegal?
@@ -32,7 +39,6 @@ public final class MavenAsset extends Asset {
             default -> throw new IllegalArgumentException("Illegal identifier format: " + identifier);
         };
     }
-
     private Label computeLabel(SimpleArtifactRef mvnIdentifier) {
         return switch (mvnIdentifier.getType()) {
             case "pom" -> Label.TOP_POM;
@@ -42,9 +48,9 @@ public final class MavenAsset extends Asset {
                     case null -> Label.TOP_JAR;
                     default -> Label.JAR;
                 };
-            case "exe", "properties", "json", "zip", "tar.gz", "ear", "war", "txt", "tar.bz2", "xml", "signature"
-                -> Label.OTHER;
             case null -> throw new IllegalArgumentException("Maven Type cannot be null");
+            case String s when uncommonTypes.contains(s)
+                -> Label.OTHER;
             default ->  {
                 log.error("New Classifier '{}' encountered. Will this cause an issue? Full identifier: '{}'",
                     mvnIdentifier.getType(),

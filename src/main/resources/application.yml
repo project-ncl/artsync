@@ -6,6 +6,10 @@ pnc:
   page-size: 50
   service-name: "pnc-backend"
   endpoint-uri: https://pnc.com/
+  retry:
+    enabled: true
+    max-attempts: 5
+    interval: "PT0.250s"
 
 indy:
   service-name: "indy-backend"
@@ -121,7 +125,7 @@ quarkus:
     db-kind: postgresql
   hibernate-orm:
     jdbc:
-      statement-batch-size: 100
+      statement-batch-size: 1000
     database:
 #      generation: drop-and-create
       generation: validate

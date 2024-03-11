@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.context.ManagedExecutor;
 import org.jboss.pnc.enums.RepositoryType;
 import org.jboss.pnc.artsync.UploadCronJob;
 import org.jboss.pnc.artsync.model.hibernate.AssetEntry;
@@ -22,6 +23,9 @@ public class JobAPIImpl implements JobAPI {
 
     @Inject
     UploadCronJob job;
+
+    @Inject
+    ManagedExecutor executor;
 
     @Override
     public Paged<Job> getAll(String since, Pagination page) {
@@ -123,7 +127,7 @@ public class JobAPIImpl implements JobAPI {
     @Override
     public Response manualTrigger() {
         if (job.canTrigger()) {
-            CompletableFuture.runAsync(() -> job.processBuildsJob());
+            CompletableFuture.runAsync(() -> job.processBuildsJob(), executor);
             return Response.accepted().build();
         }
         throw new BadRequestException("Cannot start job while one is in progress.");

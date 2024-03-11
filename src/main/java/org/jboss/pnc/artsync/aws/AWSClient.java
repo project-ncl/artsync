@@ -696,6 +696,7 @@ public class AWSClient {
             assets.forEach(ass -> agg.addError(switch (statusCode) {
                 case "E400" -> new GenericError.CorruptedData<>(ass, joinBuffer(contextBuffer));
                 case "E402" -> new AWSError.QuotaExceeded<>(ass);
+                case "ENEEDAUTH" -> new AWSError.InvalidToken<>(ass);
                 // Has its own pattern
                 case "E409" -> new AWSError.Conflict<>(ass, awsRepoUrl, repositoryId, ZonedDateTime.now());
                 case "E429" -> new AWSError.RateLimitExceeded<>(ass);

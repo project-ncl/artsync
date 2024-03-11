@@ -56,7 +56,6 @@ public class UploadCronJob {
             ZonedDateTime since = Job.getLastFinishedJob()
                 .map(Job::getLastProcessed)
                 .orElse(ZonedDateTime.ofInstant(Instant.EPOCH, ZoneId.systemDefault()));
-
             manager.processBuilds(since, config.jobSize(), config.batchSize());
 
             log.info("Upload Job finished");

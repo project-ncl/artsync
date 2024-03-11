@@ -77,7 +77,9 @@ public class BuildArtifactCollector {
         List<Asset> uploads = new ArrayList<>(tuples.size());
         for (var artifact : tuples.values()) {
             // Avoid GProxy artifacts that were promoted to shared-imports
-            if (artifact.pnc().getIdentifier().startsWith("http")
+            if ((artifact.pnc().getIdentifier().startsWith("http://")
+                || artifact.pnc().getIdentifier().startsWith("https://"))
+                && artifact.pnc().getIdentifier().contains("|")
                 && artifact.pnc().getTargetRepository().getRepositoryType() != RepositoryType.GENERIC_PROXY){
                 // TODO recreate as GPROXY artifact
                 LOG.error("GPROXY ARTIFACT acting as MAVEN id: {}, identifier: {}", artifact.pnc().getId(),
@@ -105,6 +107,7 @@ public class BuildArtifactCollector {
         Build build = artifact.pnc().getBuild();
         return builder
             .size(artifact.pnc().getSize())
+            .artifactID(artifact.pnc().getId())
             .filename(filename)
             .type(artifact.pnc().getTargetRepository().getRepositoryType())
             .identifier(artifact.pnc().getIdentifier())
@@ -136,7 +139,21 @@ public class BuildArtifactCollector {
     }
 
     private MavenAsset convertToMavenAsses(ArtTuple artifact) {
-        return fillCommon(MavenAsset.builder(), artifact).build();
+        Asset.AssetBuilder<? extends MavenAsset, ? extends MavenAsset.MavenAssetBuilder<?, ?>> mavenAsset =
+            fillCommon(MavenAsset.builder(), artifact);
+
+        ArtifactRef pncIdent = MavenAsset.computeMvn(artifact.pnc().getIdentifier());
+        ArtifactRef deployIdent = ArtifactPathInfo.parse(artifact.pnc().getDeployPath()).getArtifact();
+
+
+        // reparse ident and use if it's better
+        // do not override if the version does not have any numbers (artifacts without file-types are unparsable)
+        if (!deployIdent.equals(pncIdent) && deployIdent.getVersionString().chars().anyMatch(Character::isDigit)) {
+            LOG.warn("PNC/INDY Identifier mismatch. PNC: {} vs INDY: {}", pncIdent.toString(), deployIdent.toString());
+            mavenAsset.identifier(deployIdent.toString());
+        }
+
+        return mavenAsset.build();
     }
     private NpmAsset convertToNpmAsses(ArtTuple artifact) {
         return fillCommon(NpmAsset.builder(), artifact).build();

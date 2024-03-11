@@ -89,11 +89,14 @@ public class AssetEntry extends PanacheEntity {
 
     //region Properties
     @Getter
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     public String identifier;
     public String artifactID;
+
     @Enumerated(EnumType.STRING)
     public RepositoryType type;
+
+    @Column(columnDefinition = "TEXT")
     public String filename;
     public long size;
     public String md5;
