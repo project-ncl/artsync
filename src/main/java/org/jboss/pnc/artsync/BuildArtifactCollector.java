@@ -139,8 +139,8 @@ public class BuildArtifactCollector {
     }
 
     private MavenAsset convertToMavenAsses(ArtTuple artifact) {
-        Asset.AssetBuilder<? extends MavenAsset, ? extends MavenAsset.MavenAssetBuilder<?, ?>> mavenAsset =
-            fillCommon(MavenAsset.builder(), artifact);
+        MavenAsset mavenAsset =
+            fillCommon(MavenAsset.builder(), artifact).build();
 
         ArtifactRef pncIdent = MavenAsset.computeMvn(artifact.pnc().getIdentifier());
         ArtifactRef deployIdent = ArtifactPathInfo.parse(artifact.pnc().getDeployPath()).getArtifact();
@@ -150,10 +150,10 @@ public class BuildArtifactCollector {
         // do not override if the version does not have any numbers (artifacts without file-types are unparsable)
         if (!deployIdent.equals(pncIdent) && deployIdent.getVersionString().chars().anyMatch(Character::isDigit)) {
             LOG.warn("PNC/INDY Identifier mismatch. PNC: {} vs INDY: {}", pncIdent.toString(), deployIdent.toString());
-            mavenAsset.identifier(deployIdent.toString());
+            mavenAsset = mavenAsset.toBuilder().identifier(deployIdent.toString()).build();
         }
 
-        return mavenAsset.build();
+        return mavenAsset;
     }
     private NpmAsset convertToNpmAsses(ArtTuple artifact) {
         return fillCommon(NpmAsset.builder(), artifact).build();
