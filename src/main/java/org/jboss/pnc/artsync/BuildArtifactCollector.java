@@ -143,15 +143,21 @@ public class BuildArtifactCollector {
             fillCommon(MavenAsset.builder(), artifact).build();
 
         ArtifactRef pncIdent = MavenAsset.computeMvn(artifact.pnc().getIdentifier());
-        ArtifactRef deployIdent = ArtifactPathInfo.parse(artifact.pnc().getDeployPath()).getArtifact();
-
+        ArtifactPathInfo pathInfo = ArtifactPathInfo.parse(artifact.pnc().getDeployPath());
 
         // reparse ident and use if it's better
         // do not override if the version does not have any numbers (artifacts without file-types are unparsable)
-        if (!deployIdent.equals(pncIdent) && deployIdent.getVersionString().chars().anyMatch(Character::isDigit)) {
-            LOG.warn("PNC/INDY Identifier mismatch. PNC: {} vs INDY: {}", pncIdent.toString(), deployIdent.toString());
-            mavenAsset = mavenAsset.toBuilder().identifier(deployIdent.toString()).build();
+        if (pathInfo != null) {
+            ArtifactRef deployIdent = pathInfo.getArtifact();
+            if (deployIdent != null
+                    && !deployIdent.equals(pncIdent)
+                    && deployIdent.getVersionString().chars().anyMatch(Character::isDigit)) {
+                LOG.warn("PNC/INDY Identifier mismatch. PNC: {} vs INDY: {}", pncIdent.toString(), deployIdent.toString());
+                mavenAsset = mavenAsset.toBuilder().identifier(deployIdent.toString()).build();
+            }
+
         }
+
 
         return mavenAsset;
     }
@@ -190,8 +196,10 @@ public class BuildArtifactCollector {
 
         pncArts.forEach(art -> {
             char lastChar = art.getIdentifier().charAt(art.getIdentifier().length()-1);
-            // detect errors like
-            if (art.getIdentifier().contains(".json") && Character.isDigit(lastChar)) {
+            // detect identifier errors like quarkus json issues
+            if (art.getIdentifier().contains(".json")
+                    && Character.isDigit(lastChar)
+                    && ArtifactPathInfo.parse(art.getDeployPath()) != null) {
                 ArtifactPathInfo gav = ArtifactPathInfo.parse(art.getDeployPath());
                 String identifier = gav.getArtifact().toString();
                 artifactMap.put(identifier, art.toBuilder().identifier(identifier).build());
