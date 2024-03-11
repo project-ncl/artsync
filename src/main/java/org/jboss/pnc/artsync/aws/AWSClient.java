@@ -158,7 +158,7 @@ public class AWSClient {
     }
 
     private static Set<Class<? extends UploadResult.Error>> retryOn =
-        Set.of(AWSError.RateLimitExceeded.class, AWSError.ConnectionError.class);
+        Set.of(AWSError.RateLimitExceeded.class, AWSError.ConnectionError.class, AWSError.InvalidToken.class);
 
     private static boolean shouldRetry(Object result) {
         boolean toReturn = result instanceof Results<?> res
@@ -383,7 +383,10 @@ public class AWSClient {
     private static UploadResult.Error<MavenAsset> parseException(Throwable e, String repositoryId, String deployedUrl, MavenAsset ass) {
         return switch (e) {
             case HttpResponseException res -> handleStatusCode(repositoryId, deployedUrl, ass, res);
-            case ArtifactTransferException res -> parseException(e.getCause(), repositoryId, deployedUrl, ass);
+            case ArtifactTransferException res -> switch (e.getCause()) {
+                case null -> new GenericError.UncaughtException<>(ass, e);
+                default -> parseException(e.getCause(), repositoryId, deployedUrl, ass);
+            };
             case ConnectionPoolTimeoutException poolTimeout -> new GenericError.UnknownError<>(ass, "CONNECTION POOL TIMEOUT");
             case ConnectTimeoutException timeout -> new GenericError.Timeout<>(ass);
             case NoHttpResponseException noResponse -> new AWSError.ConnectionError<>(ass, noResponse.toString());

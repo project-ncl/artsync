@@ -452,7 +452,13 @@ public class GrouperManager {
     }
 
     private List<ProjectAssets<?, ?>> groupByProject(Collection<VersionAssets<? extends Asset>> versionAssets) {
-        return versionAssets.stream().collect(groupingBy(pver -> pver.assets().getFirst().getPackageString()))
+        record ProjectRepoTuple(String project, String repo){}; //helper record tuple
+
+        return versionAssets.stream()
+            .collect(groupingBy(pver ->
+                new ProjectRepoTuple(
+                    pver.assets().getFirst().getPackageString(), // package (group or packageName)
+                    pver.assets().getFirst().getSourceRepository().getRepositoryPath()))) // source repository
             .values()
             .stream()
             .map(vers -> switch (vers.getFirst()) {

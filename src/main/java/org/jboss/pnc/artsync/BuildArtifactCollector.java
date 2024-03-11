@@ -155,9 +155,7 @@ public class BuildArtifactCollector {
                 LOG.warn("PNC/INDY Identifier mismatch. PNC: {} vs INDY: {}", pncIdent.toString(), deployIdent.toString());
                 mavenAsset = mavenAsset.toBuilder().identifier(deployIdent.toString()).build();
             }
-
         }
-
 
         return mavenAsset;
     }
