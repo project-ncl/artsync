@@ -59,6 +59,7 @@ public class SettingsGenerator {
     private static final String npmBaseTemplate = """
         fetch-retries=10
         registry={0}
+        //{1}:always-auth=true
         //{1}:_authToken={2}
         """;
     public static final String AUTH_TOKEN_KEY = "CODEARTIFACT_AUTH_TOKEN";
