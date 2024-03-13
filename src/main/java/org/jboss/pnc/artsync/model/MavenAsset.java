@@ -11,9 +11,6 @@ import org.jboss.pnc.dto.TargetRepository;
 import java.net.URI;
 import java.util.Set;
 
-import static java.util.stream.Collectors.toSet;
-import static java.util.stream.Stream.concat;
-
 @Getter
 @SuperBuilder(toBuilder = true)
 @Slf4j
@@ -22,7 +19,8 @@ public final class MavenAsset extends Asset {
     private final SimpleArtifactRef mvnIdentifier = computeMvn(getIdentifier());
     private final Label label = computeLabel(mvnIdentifier);
     public static final Set<String> uncommonTypes = Set.of("exe", "xsd", "xjb", "yml", "properties", "json", "zip",
-        "tar.gz", "ear", "war", "txt", "tar.bz2", "xml", "signature", "kar", "empty", "html", "pdf");
+        "tar.gz", "ear", "war", "txt", "tar.bz2", "xml", "signature", "kar", "empty", "html", "pdf", "cfg", "rar",
+        "xml.gz", "yaml", "wsdl", "jdocbook-style", "js", "key", "so", "target");
 
 
     public MavenAsset(String identifier, String artifactId, String filename, long size, String md5, String sha1, String sha256, URI downloadURI, TargetRepository sourceRepository, String originBuildID, BuildStat processingBuildID) {
