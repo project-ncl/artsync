@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
@@ -139,9 +140,18 @@ public class BuildArtifactCollector {
     }
 
     private MavenAsset convertToMavenAsses(ArtTuple artifact) {
-        MavenAsset mavenAsset =
-            fillCommon(MavenAsset.builder(), artifact).build();
+        MavenAsset mavenAsset = fillCommon(MavenAsset.builder(), artifact).build();
 
+        if (!(
+            Set.of("jar", "pom").contains(mavenAsset.getMvnIdentifier().getType())
+            || MavenAsset.uncommonTypes.contains(mavenAsset.getMvnIdentifier().getType()))) {
+            mavenAsset = reparseWithDeployPath(artifact, mavenAsset);
+        }
+
+        return mavenAsset;
+    }
+
+    private static MavenAsset reparseWithDeployPath(ArtTuple artifact, MavenAsset mavenAsset) {
         ArtifactRef pncIdent = MavenAsset.computeMvn(artifact.pnc().getIdentifier());
         ArtifactPathInfo pathInfo = ArtifactPathInfo.parse(artifact.pnc().getDeployPath());
 
@@ -156,9 +166,9 @@ public class BuildArtifactCollector {
                 mavenAsset = mavenAsset.toBuilder().identifier(deployIdent.toString()).build();
             }
         }
-
         return mavenAsset;
     }
+
     private NpmAsset convertToNpmAsses(ArtTuple artifact) {
         return fillCommon(NpmAsset.builder(), artifact).build();
     }
