@@ -24,6 +24,13 @@ public interface ArtsyncConfig {
     @WithDefault("true")
     Boolean cleanArtifacts();
 
+    /**
+     * How many project versions can be handled at the same time.
+     * If left on Integer.MAX_VALUE and AWS is the bottleneck, this can download huge amount of artifacts from Indy.
+     * Leave it restrained by default so that Indy DOWNLOADS, AWS UPLOADS, Filesystem DELETES are grouped together but
+     * still concurrent.
+     * @return limit of concurrently processed project versions (GAVs, NVs)
+     */
     @WithDefault("2147483647") //Integer.MAX_VALUE for practically full concurrency
     int pipelineConcurrencyLimit();
 
