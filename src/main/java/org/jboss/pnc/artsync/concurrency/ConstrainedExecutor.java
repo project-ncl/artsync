@@ -53,8 +53,7 @@ public class ConstrainedExecutor implements ConstrainedExecutorService, Constrai
         this.rateLimiter = RateLimiter.of(applicationConfig.serviceName(), config.build());
 
         if (applicationConfig.retry().enabled()) {
-            RetryConfig.Builder retryConf = RetryConfig.custom().maxAttempts(applicationConfig.retry().maxAttempts())
-                .waitDuration(applicationConfig.retry().interval());
+            RetryConfig.Builder retryConf = RetryConfig.custom().maxAttempts(applicationConfig.retry().maxAttempts());
             if (retryOnException != null) {
                 retryConf.retryOnException(retryOnException);
             }
@@ -62,7 +61,9 @@ public class ConstrainedExecutor implements ConstrainedExecutorService, Constrai
                 retryConf.retryOnResult(retryOnResult);
             }
             if (applicationConfig.retry().exponentialBackoff()) {
-                retryConf.intervalFunction(IntervalFunction.ofExponentialBackoff());
+                retryConf.intervalFunction(IntervalFunction.ofExponentialBackoff(applicationConfig.retry().interval()));
+            } else {
+                retryConf.waitDuration(applicationConfig.retry().interval());
             }
             this.retry = Retry.of(applicationConfig.serviceName(), retryConf.build());
         } else {

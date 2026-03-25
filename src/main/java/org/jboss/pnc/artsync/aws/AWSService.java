@@ -3,16 +3,14 @@ package org.jboss.pnc.artsync.aws;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.jboss.pnc.artsync.config.ArtsyncConfig;
 import org.jboss.pnc.artsync.model.Asset;
-import org.jboss.pnc.artsync.model.AssetUpload;
-import org.jboss.pnc.artsync.model.GPAssets;
+import org.jboss.pnc.artsync.model.GPAsset;
+import org.jboss.pnc.artsync.model.GPNPVAssets;
 import org.jboss.pnc.artsync.model.MavenAsset;
 import org.jboss.pnc.artsync.model.MvnGAVAssets;
 import org.jboss.pnc.artsync.model.NpmAsset;
 import org.jboss.pnc.artsync.model.NpmNVAssets;
 import org.jboss.pnc.artsync.model.Results;
-import org.jboss.pnc.artsync.model.UploadResult;
 import org.jboss.pnc.artsync.model.UploadResult.Error.GenericError;
-import org.jboss.pnc.artsync.model.UploadResult.Success;
 import org.jboss.pnc.artsync.model.VersionAssets;
 import org.jboss.pnc.artsync.pnc.Result;
 import org.jboss.resteasy.reactive.common.NotImplementedYet;
@@ -24,6 +22,7 @@ import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 
 import static org.jboss.pnc.artsync.config.RepositoryMapping.parseIndyRepository;
+import static software.amazon.awssdk.services.codeartifact.model.PackageFormat.GENERIC;
 import static software.amazon.awssdk.services.codeartifact.model.PackageFormat.MAVEN;
 import static software.amazon.awssdk.services.codeartifact.model.PackageFormat.NPM;
 
@@ -77,8 +76,7 @@ public class AWSService {
         return (switch (versionAssets) {
             case MvnGAVAssets gav -> uploadMavenGAV(gav, assetDir);
             case NpmNVAssets nv -> uploadNpmNV(nv, assetDir);
-            // TODO?
-            case GPAssets gp -> throw new NotImplementedYet();
+            case GPNPVAssets gp -> uploadGenericProxyNPV(gp, assetDir);
         }).thenApply(this::invalidateOnErrors);
     }
 
@@ -133,5 +131,19 @@ public class AWSService {
             settingsProvider.getSettings(awsRepo, MAVEN).toPath().toString());
     }
 
+    public CompletableFuture<Results<GPAsset>> uploadGenericProxyNPV(GPNPVAssets npv, Path assetDir) {
+        String awsRepo = config.repositoryMapping().mapToAws(npv.getSourceRepository());
+        if (awsRepo == null) {
+            var result = new Results<GPAsset>();
+            npv.assets().forEach(ass -> result.addError(new GenericError.MissingRepositoryMapping<>(ass, parseIndyRepository(npv.getSourceRepository()))));
+
+            return CompletableFuture.completedFuture(result);
+        }
+
+        return client.uploadProjectGP(npv,
+                assetDir,
+                settingsProvider.getRepoUrl(awsRepo, GENERIC),
+                awsRepo);
+    }
 
 }

@@ -14,8 +14,8 @@ import java.net.URI;
 public final class NpmAsset extends Asset {
     private final NpmPackageRef npmIdentifier = NpmPackageRef.parse(getIdentifier());
 
-    public NpmAsset(String identifier, String artifactId, String filename, long size, String md5, String sha1, String sha256, URI downloadURI, TargetRepository sourceRepository, String originBuildID, BuildStat processingBuildID) {
-        super(identifier, artifactId, RepositoryType.NPM, filename, size, md5, sha1, sha256, downloadURI, sourceRepository, originBuildID, processingBuildID);
+    public NpmAsset(String identifier, String artifactId, String filename, long size, String md5, String sha1, String sha256, URI downloadURI, URI originURI, TargetRepository sourceRepository, String originBuildID, BuildStat processingBuildID) {
+        super(identifier, artifactId, RepositoryType.NPM, filename, size, md5, sha1, sha256, downloadURI, originURI, sourceRepository, originBuildID, processingBuildID);
     }
 
     @Override

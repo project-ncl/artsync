@@ -21,8 +21,8 @@ import org.jboss.pnc.artsync.config.ArtsyncConfig;
 import org.jboss.pnc.artsync.indy.IndyService;
 import org.jboss.pnc.artsync.model.Asset;
 import org.jboss.pnc.artsync.model.GPAsset;
-import org.jboss.pnc.artsync.model.GPAssets;
-import org.jboss.pnc.artsync.model.GPProjectAssets;
+import org.jboss.pnc.artsync.model.GPNPVAssets;
+import org.jboss.pnc.artsync.model.GPNamespaceProjectAssets;
 import org.jboss.pnc.artsync.model.MavenAsset;
 import org.jboss.pnc.artsync.model.MvnGAAssets;
 import org.jboss.pnc.artsync.model.MvnGAVAssets;
@@ -40,7 +40,6 @@ import org.jboss.pnc.artsync.pnc.PncService;
 import org.jboss.pnc.artsync.pnc.Result;
 import org.jboss.pnc.artsync.pnc.ResultAgg;
 import org.jboss.pnc.dto.Build;
-import org.jboss.pnc.dto.BuildRef;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -430,7 +429,7 @@ public class GrouperManager {
                 yield projectDir.resolve(ga.getArtifactId());
             }
             case NpmProjectAssets npm -> rootDir.resolve("npm").resolve(npm.getProjectRef().getName());
-            case GPProjectAssets gp -> rootDir.resolve("gp");
+            case GPNamespaceProjectAssets gp -> rootDir.resolve("gp").resolve(gp.getNamespaceProjectPath().replace("|","/"));
         };
     }
 
@@ -446,8 +445,9 @@ public class GrouperManager {
             case MvnGAVAssets gav -> projectDir.resolve(gav.getVersionRef().getVersionString());
             case NpmNVAssets nv -> projectDir.resolve(nv.getPackageRef().getVersionString());
 
-            // FIXME make sure that it's unique
-            case GPAssets gps -> projectDir.resolve(DigestUtils.md5Hex(gps.versionIdentifier()));
+            // project dir is already unique since it has a single unique asset
+            // gp/<<build-id>>/<<domain>>/<<base64-path>>
+            case GPNPVAssets gps -> projectDir;
         };
     }
 
@@ -483,7 +483,7 @@ public class GrouperManager {
                         String v2 = nv2.getPackageRef().getVersionString();
                         return vc.compare(v1, v2);}
                     ).toList());
-                case GPAssets x -> new GPProjectAssets(vers.stream().map(GPAssets.class::cast).toList());
+                case GPNPVAssets x -> new GPNamespaceProjectAssets(vers.stream().map(GPNPVAssets.class::cast).toList());
             })
             .toList();
     }
@@ -496,7 +496,7 @@ public class GrouperManager {
             .map(list -> switch (list.getFirst()) {
                 case MavenAsset x -> new MvnGAVAssets(list.stream().map(MavenAsset.class::cast).toList());
                 case NpmAsset y -> new NpmNVAssets(list.stream().map(NpmAsset.class::cast).toList());
-                case GPAsset z -> new GPAssets(list.stream().map(GPAsset.class::cast).toList());
+                case GPAsset z -> new GPNPVAssets(list.stream().map(GPAsset.class::cast).toList());
             })
             .toList();
     }

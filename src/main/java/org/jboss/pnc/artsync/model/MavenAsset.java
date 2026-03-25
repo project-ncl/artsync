@@ -25,6 +25,8 @@ public final class MavenAsset extends Asset {
 
     public MavenAsset(String identifier, String artifactId, String filename, long size, String md5, String sha1, String sha256, URI downloadURI, TargetRepository sourceRepository, String originBuildID, BuildStat processingBuildID) {
         super(identifier, artifactId, RepositoryType.MAVEN, filename, size, md5, sha1, sha256, downloadURI, sourceRepository, originBuildID, processingBuildID);
+    public MavenAsset(String identifier, String artifactId, String filename, long size, String md5, String sha1, String sha256, URI downloadURI, URI originURI, TargetRepository sourceRepository, String originBuildID, BuildStat processingBuildID) {
+        super(identifier, artifactId, RepositoryType.MAVEN, filename, size, md5, sha1, sha256, downloadURI, originURI, sourceRepository, originBuildID, processingBuildID);
     }
 
     public static SimpleArtifactRef computeMvn(String identifier) {

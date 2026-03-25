@@ -32,6 +32,8 @@ public interface AWSApplicationConfig extends ServiceApplicationConfig {
     @WithDefault("20")
     int subprocessConcurrencyLimit();
 
+    ServiceApplicationConfig publish();
+
     interface AwsConfig extends io.quarkus.amazon.common.runtime.AwsConfig {}
     interface SdkConfig extends io.quarkus.amazon.common.runtime.SdkConfig {}
     interface HttpClientConfig extends io.quarkus.amazon.common.runtime.AsyncHttpClientConfig {}

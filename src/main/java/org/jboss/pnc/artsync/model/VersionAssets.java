@@ -4,7 +4,7 @@ import org.jboss.pnc.dto.TargetRepository;
 
 import java.util.List;
 
-public abstract sealed class VersionAssets<ASS extends Asset> permits MvnGAVAssets, NpmNVAssets, GPAssets {
+public abstract sealed class VersionAssets<ASS extends Asset> permits MvnGAVAssets, NpmNVAssets, GPNPVAssets {
     private final List<ASS> assets;
 
     public VersionAssets(List<ASS> assets) {

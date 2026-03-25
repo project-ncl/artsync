@@ -2,13 +2,18 @@ package org.jboss.pnc.artsync.model;
 
 import java.util.List;
 
-public final class GPAssets extends VersionAssets<GPAsset> {
+public final class GPNPVAssets extends VersionAssets<GPAsset> {
 
+    // '<<domain>>|<<deploy-path>>|<<build-id>>'
     private final String versionedIdentifier;
 
-    public GPAssets(List<GPAsset> assets) {
+    // '<<build-id>>|<<domain>>'
+    private final String namespaceProject;
+
+    public GPNPVAssets(List<GPAsset> assets) {
         super(assets);
         this.versionedIdentifier = verifyAssets(assets);
+        this.namespaceProject = assets.getFirst().getPackageVersionString();
     }
 
     private String verifyAssets(List<GPAsset> assets) {
@@ -23,6 +28,10 @@ public final class GPAssets extends VersionAssets<GPAsset> {
     @Override
     public String versionIdentifier() {
         return versionedIdentifier;
+    }
+
+    public String projectIdentifier() {
+        return namespaceProject;
     }
 
     @Override

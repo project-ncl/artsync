@@ -6,7 +6,7 @@ import java.util.List;
 
 @Getter
 public abstract sealed class ProjectAssets<VER extends VersionAssets<ASS>, ASS extends Asset>
-    permits MvnGAAssets, NpmProjectAssets, GPProjectAssets {
+    permits MvnGAAssets, NpmProjectAssets, GPNamespaceProjectAssets {
 
     private final List<VER> projectVersionAssets;
 

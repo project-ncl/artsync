@@ -42,12 +42,25 @@ aws:
     time-constraint: PT1S
   retry:
     enabled: true
-    max-attempts: 5
+    max-attempts: 10
+    interval: 1S
+    exponential-backoff: true
   #  http:
 #    tls-trust-managers-provider:
 #      type: TRUST-ALL
   dry-run: false
   subprocess-concurrency-limit: 10
+  publish:
+    service-name: aws-publish-generic
+    rate-limit:
+      rate-of-requests: 2
+      request-timeout: 1000000
+      time-constraint: 0.35s
+    retry:
+      enabled: true
+      interval: 1S
+      max-attempts: 10
+      exponential-backoff: true
 
 artsync:
   artifacts:
@@ -71,13 +84,15 @@ artsync:
     # Comment if on prod, it's just annoying on stage
     #- "maven:group:builds-untested"
     allowed-types:
+    - generic_proxy
     - maven
     - npm
   repositories:
     indy-aws-mappings:
       "pnc-builds": "test-repository"
       "shared-imports": "test-repository-2"
-    generate-generic-proxy-repositories: true
+    force-single-generic-proxy-repository: true
+    target-generic-proxy-repository: "test-repository-2"
     generate-settings-xml: true
     settings-generation-directory: "/tmp/settings"
   download-root-dir: "/tmp/downloads"
@@ -108,7 +123,7 @@ quarkus:
       json: false
     category:
       "org.jboss.pnc":
-        level: INFO
+        level: DEBUG
 #      "io.quarkus":
 #        level: TRACE
 #      "io.quarkus.scheduler":

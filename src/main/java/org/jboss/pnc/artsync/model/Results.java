@@ -30,16 +30,16 @@ public record Results<E extends Asset>(List<Success<AssetUpload<E>>> successes,
         E asset = success.result().asset();
 
         if (!assets.add(asset)) {
-            log.warn("Asset {} added to results twice.", asset.getIdentifier());
+            log.trace("Asset {} added to results twice.", asset.getIdentifier());
 
-            var error = errors.stream().filter(err -> err.context().getIdentifier().equals(asset.getIdentifier())).findFirst();
-            if (error.isEmpty()) {
-                log.warn("Duplicate success for {} found. Ignoring: {}", success.result().asset().getIdentifier(), success);
+            var matchingErrors = errors.stream().filter(err -> err.context().getIdentifier().equals(asset.getIdentifier())).toList();
+            if (matchingErrors.isEmpty()) {
+                log.trace("Duplicate success for {} found. Ignoring: {}", success.result().asset().getIdentifier(), success);
                 return false;
             }
 
-            log.warn("Found success. Removing {} from errors. Previous error {}", error.get().context().getIdentifier(), error.get());
-            errors.remove(error.get());
+            log.trace("Found success of {}. Removing {} error/s. Removed {}", asset.getIdentifier(), matchingErrors.size(), matchingErrors.toString());
+            errors.removeAll(matchingErrors);
         }
 
         return successes.add(success);
@@ -58,6 +58,10 @@ public record Results<E extends Asset>(List<Success<AssetUpload<E>>> successes,
             }
             log.warn("Duplicate error for {} found. Ignoring duplicate: {}.", asset.getIdentifier(), error);
         }
+
+        // retries create a lot of errors, which cause duplicates, remove all errors if matching
+        var matchingErrors = errors.stream().filter(err -> err.context().getIdentifier().equals(asset.getIdentifier())).toList();
+        errors.removeAll(matchingErrors);
 
         return errors.add(error);
     }

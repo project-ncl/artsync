@@ -9,6 +9,7 @@ import org.jboss.pnc.artsync.config.ArtifactConfig;
 import org.jboss.pnc.artsync.config.ArtsyncConfig;
 import org.jboss.pnc.artsync.model.Asset;
 import org.jboss.pnc.artsync.model.NpmNVAssets;
+import org.jboss.pnc.artsync.model.UploadResult;
 import org.jboss.pnc.artsync.model.VersionAssets;
 import org.jboss.pnc.artsync.pnc.Result;
 import org.jboss.pnc.artsync.pnc.Result.Success;
@@ -20,6 +21,7 @@ import java.io.File;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -72,7 +74,7 @@ public class IndyService {
      * @param uriPathMap uri file
      * @return paths to files
      */
-    public CompletableFuture<ResultAgg<File>> downloadByPath(Map<String, FileSize> uriPathMap, boolean overrideIndyUrl) {
+    public CompletableFuture<ResultAgg<File>> downloadByPath(Map<Urls, FileSize> uriPathMap, boolean overrideIndyUrl) {
         ResultAgg<File> agg = new ResultAgg<>(new CopyOnWriteArrayList<>(), new CopyOnWriteArrayList<>());
 
         validFilenames(uriPathMap, agg);
@@ -86,16 +88,29 @@ public class IndyService {
         for (var entry : uriPathMap.entrySet()) {
             futures.add(
                 fs.mkdirs(entry.getValue().file().getParent()).toCompletionStage()
-                    .thenCompose(destination -> client.downloadFile(entry.getKey(),
-                        entry.getValue().file().getPath(),
-                        entry.getValue().size(),
-                        overrideIndyUrl))
-                    .thenApply(r -> returnFile(r, entry.getValue().file()))
-                    .whenComplete((r, t) -> handleResult(agg, r, t))
-                    .toCompletableFuture());
+                        .thenCompose(destination -> downloadFileFromURL(overrideIndyUrl, entry.getKey().primary(), entry.getValue()))
+                        .thenCompose((result) -> switch (result) {
+
+                            // If there's no content in Indy, try secondary url (originUrl for Artifacts)
+                            case Result.Error.ClientError.NotFound(String uri) when entry.getKey().secondary() != null
+                                    -> {
+                                LOG.info("Download of {} returned no result, trying out OriginUrl", uri);
+
+                                yield downloadFileFromURL(overrideIndyUrl, entry.getKey().secondary(), entry.getValue());
+                            }
+                            // All good
+                            default -> CompletableFuture.completedFuture(result);
+                        })
+                        .thenApply(r -> returnFile(r, entry.getValue().file()))
+                        .whenComplete((r, t) -> handleResult(agg, r, t))
+                        .toCompletableFuture());
         }
 
         return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).thenApply(ign -> agg);
+    }
+
+    private CompletableFuture<Result<String>> downloadFileFromURL(boolean overrideIndyUrl, String url, FileSize fileMeta) {
+        return client.downloadFile(url, fileMeta.file().getPath(), fileMeta.size(), fileMeta.sha256(), overrideIndyUrl);
     }
 
     public <T extends Asset> CompletableFuture<ResultAgg<File>> downloadToDirectory(VersionAssets<T> projectVersion,
@@ -107,10 +122,10 @@ public class IndyService {
             return CompletableFuture.completedFuture(new ResultAgg<>(List.of(), List.of()));
         }
 
-        Map<String, FileSize> urlPathMap = new HashMap<>();
+        Map<Urls, FileSize> urlPathMap = new HashMap<>();
         for (T asset : projectVersion.assets()) {
             File file = versionRootDir.resolve(asset.getFilename()).toFile();
-            urlPathMap.put(asset.getDownloadURI().toString(), new FileSize(file, asset.getSize()));
+            urlPathMap.put(new Urls(asset.getDownloadURI().toString(), asset.getOriginURI() != null ? asset.getOriginURI().toString() : null), new FileSize(file, asset.getSize(), asset.getSha256()));
         }
 
         return downloadByPath(urlPathMap, overrideIndyUrl);
@@ -123,17 +138,39 @@ public class IndyService {
         };
     }
 
-    private void validFilenames(Map<String, FileSize> uriPathMap, ResultAgg<File> agg) {
+    private void validFilenames(Map<Urls, FileSize> uriPathMap, ResultAgg<File> agg) {
         uriPathMap.forEach((uri, file) -> {
-            var uriuri = URI.create(uri);
-            String[] split = uriuri.getPath().split("/");
-            String filenameInUri = split[split.length-1];
-            String filenameInDirectory = file.file().getName();
-
-            if (!filenameInDirectory.equals(filenameInUri)) {
-                agg.errors().add(new Result.Error.UncaughtException(new IllegalArgumentException("Filenames do not match")));
+            validateUrl(agg, uri.primary(), file);
+            if (uri.secondary() != null) {
+                validateUrl(agg, uri.secondary(), file);
             }
         });
+    }
+
+    private static void validateUrl(ResultAgg<File> agg, String uri, FileSize file) {
+        var uriuri = URI.create(uri);
+        String uriPath = uriuri.getPath();
+
+        if (uriPath.endsWith("/")) {
+            uriPath = uriPath.substring(0, uriPath.length() - 1);
+        }
+        String[] split = uriPath.split("/");
+        String filenameInUri = split[split.length - 1];
+        String filenameInDirectory = file.file().getName();
+
+        if (!filenameInDirectory.equals(filenameInUri) && !decodeFromBase64(filenameInUri).endsWith(filenameInDirectory) && !filenameInDirectory.equals(Asset.NO_FILENAME_PLACEHOLDER)) {
+            agg.errors().add(new Result.Error.UncaughtException(new IllegalArgumentException("Filenames do not match")));
+        }
+    }
+
+    private static String decodeFromBase64(String filenameInUri) {
+        try {
+            // WAS IN BASE64
+            return new String(Base64.getDecoder().decode(filenameInUri));
+        } catch (IllegalArgumentException e) {
+            // WASN'T IN BASE64
+            return filenameInUri;
+        }
     }
 
     private <T> void handleResult(ResultAgg<T> agg, Result<T> single, Throwable t) {
