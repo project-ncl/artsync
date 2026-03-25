@@ -13,6 +13,7 @@ import org.jboss.pnc.artsync.UploadCronJob;
 import org.jboss.pnc.artsync.aws.AWSService;
 import org.jboss.pnc.artsync.indy.FileSize;
 import org.jboss.pnc.artsync.indy.IndyService;
+import org.jboss.pnc.artsync.indy.Urls;
 import org.jboss.pnc.artsync.model.Asset;
 import org.jboss.pnc.artsync.model.ProjectAssets;
 import org.jboss.pnc.artsync.model.Results;
@@ -102,8 +103,8 @@ public class TestAPIImpl implements TestAPI {
     @Override
     public List<String> fetchFromIndy(boolean override, Map<String, String> uriPathMap) {
         ResultAgg<File> agg = indy.downloadByPath(uriPathMap.entrySet().stream()
-            .collect(Collectors.toMap(Map.Entry::getKey,
-                    entry -> new FileSize(Path.of(entry.getValue()).toFile(), 0)
+            .collect(Collectors.toMap(entry -> new Urls(entry.getKey(), null),
+                    entry -> new FileSize(Path.of(entry.getValue()).toFile(), 0, "10ef952bf73bbeb639da74789f10e3e5bddbc75a644ec98d2f7257f2da6fd93a")
                 )
             ), override).join();
         for (var error : agg.errors()) {
@@ -125,7 +126,6 @@ public class TestAPIImpl implements TestAPI {
         } else {
             assets.addAll(projects.stream().limit(numOfUploads).toList());
         }
-
         for (var asset : assets) {
             var agg = grouper.uploadAssets(asset).join();
             agg.stream().filter(Results::haveErrors).forEach(res -> {

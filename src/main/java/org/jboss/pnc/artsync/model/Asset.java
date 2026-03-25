@@ -15,6 +15,9 @@ import java.util.Objects;
 @Getter
 @SuperBuilder(toBuilder = true)
 public abstract sealed class Asset permits MavenAsset, NpmAsset, GPAsset {
+    public static final String NO_FILENAME_PLACEHOLDER = "NO-FILENAME";
+
+
     private final String identifier;
     private final String artifactID;
     private final RepositoryType type;
@@ -24,6 +27,7 @@ public abstract sealed class Asset permits MavenAsset, NpmAsset, GPAsset {
     private final String sha1;
     private final String sha256;
     private final URI downloadURI;
+    private final URI originURI;
     private final TargetRepository sourceRepository;
     private final String originBuildID;
     private final BuildStat processingBuildID;
@@ -46,5 +50,12 @@ public abstract sealed class Asset permits MavenAsset, NpmAsset, GPAsset {
     @Override
     public String toString() {
         return getPackageVersionString();
+    }
+
+    public String getFilename() {
+        if (filename == null || filename.isBlank()) {
+            return NO_FILENAME_PLACEHOLDER;
+        }
+        return filename;
     }
 }

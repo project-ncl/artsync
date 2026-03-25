@@ -19,6 +19,8 @@ public class WebClientOptionsProducer {
     WebClientOptions wco() {
         HttpClientOptions options = new HttpClientOptions();
         options.setTrustAll(trustAll);
+        options.setReceiveBufferSize(1048576); // 1 MB buffer
+        options.setSendBufferSize(1048576);
 
         return new WebClientOptions(options);
     }

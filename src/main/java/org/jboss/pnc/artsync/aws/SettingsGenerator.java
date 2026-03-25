@@ -16,13 +16,16 @@ import org.jboss.pnc.artsync.pnc.Result;
 import software.amazon.awssdk.services.codeartifact.model.PackageFormat;
 
 import java.io.File;
+import java.net.URI;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.text.MessageFormat;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 
+import static software.amazon.awssdk.services.codeartifact.model.PackageFormat.GENERIC;
 import static software.amazon.awssdk.services.codeartifact.model.PackageFormat.MAVEN;
 import static software.amazon.awssdk.services.codeartifact.model.PackageFormat.NPM;
 
@@ -96,9 +99,15 @@ public class SettingsGenerator {
 
         Path baseDir = createDirectory(repositoryConfig.settingsGenerationDirectory());
 
-        repositoryConfig.indyAwsMappings().values().forEach(awsrepo -> {
+        Collection<String> awsRepositories = new HashSet<>(repositoryConfig.indyAwsMappings().values());
+        if (repositoryConfig.forceSingleGenericProxyRepository()) {
+            awsRepositories.add(repositoryConfig.targetGenericProxyRepository());
+        }
+
+        awsRepositories.forEach(awsrepo -> {
             Result<String> mvn = aws.getRepositoryEndpoint(awsrepo, MAVEN);
             Result<String> npm = aws.getRepositoryEndpoint(awsrepo, NPM);
+            Result<String> gp = aws.getRepositoryEndpoint(awsrepo, GENERIC);
             Path dir = createDirectory(baseDir.resolve(awsrepo));
             switch (mvn) {
                 case Result.Success(var repoUrl) -> {
@@ -126,6 +135,17 @@ public class SettingsGenerator {
                     throw new IllegalStateException("Cannot resolve '"+ awsrepo +"' repository endpoint.");
                 }
             };
+            switch (gp) {
+                case Result.Success(var repoUrl) -> {
+                    this.repoIdToRepoUrl.putIfAbsent(awsrepo, new HashMap<>());
+                    URI uri = URI.create(repoUrl);
+                    this.repoIdToRepoUrl.get(awsrepo).put(GENERIC, repoUrl);
+                }
+                case Result.Error err -> {
+                    log.error("Cannot resolve '{}' repository endpoint. Error: {}", awsrepo, err);
+                    throw new IllegalStateException("Cannot resolve '"+ awsrepo +"' repository endpoint.");
+                }
+            }
         });
     }
 
@@ -138,7 +158,17 @@ public class SettingsGenerator {
     }
 
     private void validateRepositoriesInConfig() {
-        Collection<String> awsRepositories = repositoryConfig.indyAwsMappings().values();
+        Collection<String> awsRepositories = new HashSet<>(repositoryConfig.indyAwsMappings().values());
+
+        if (repositoryConfig.forceSingleGenericProxyRepository()) {
+            if (repositoryConfig.targetGenericProxyRepository() == null ||
+                    repositoryConfig.targetGenericProxyRepository().isBlank()) {
+                throw new IllegalStateException("Target Generic Proxy Repository is null or empty but force is configured.");
+            }
+
+            awsRepositories.add(repositoryConfig.targetGenericProxyRepository());
+        }
+
         log.info("Validating repositories {} are present in AWS.", awsRepositories) ;
         Result<Boolean> result = aws.validateRepositories(awsRepositories);
         switch (result) {

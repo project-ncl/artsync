@@ -18,7 +18,6 @@ import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.deployment.DeployRequest;
 import org.eclipse.aether.deployment.DeployResult;
-import org.eclipse.aether.deployment.DeploymentException;
 import org.eclipse.aether.repository.Authentication;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.transfer.AbstractTransferListener;
@@ -32,6 +31,7 @@ import org.jboss.pnc.artsync.concurrency.ConstrainedExecutor;
 import org.jboss.pnc.artsync.model.Asset;
 import org.jboss.pnc.artsync.model.AssetUpload;
 import org.jboss.pnc.artsync.model.GPAsset;
+import org.jboss.pnc.artsync.model.GPNPVAssets;
 import org.jboss.pnc.artsync.model.Label;
 import org.jboss.pnc.artsync.model.MavenAsset;
 import org.jboss.pnc.artsync.model.MvnGAVAssets;
@@ -45,20 +45,30 @@ import org.jboss.pnc.artsync.model.UploadResult.Success;
 import org.jboss.pnc.artsync.model.VersionAssets;
 import org.jboss.pnc.artsync.pnc.Result;
 import org.jboss.resteasy.reactive.common.NotImplementedYet;
+import software.amazon.awssdk.core.async.AsyncRequestBody;
+import software.amazon.awssdk.core.exception.ApiCallAttemptTimeoutException;
+import software.amazon.awssdk.core.exception.ApiCallTimeoutException;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.codeartifact.CodeartifactAsyncClient;
+import software.amazon.awssdk.services.codeartifact.model.AccessDeniedException;
 import software.amazon.awssdk.services.codeartifact.model.AssetSummary;
 import software.amazon.awssdk.services.codeartifact.model.CodeartifactException;
+import software.amazon.awssdk.services.codeartifact.model.ConflictException;
 import software.amazon.awssdk.services.codeartifact.model.CreateRepositoryRequest;
 import software.amazon.awssdk.services.codeartifact.model.GetAuthorizationTokenRequest;
 import software.amazon.awssdk.services.codeartifact.model.GetAuthorizationTokenResponse;
 import software.amazon.awssdk.services.codeartifact.model.GetRepositoryEndpointRequest;
 import software.amazon.awssdk.services.codeartifact.model.GetRepositoryEndpointResponse;
+import software.amazon.awssdk.services.codeartifact.model.InternalServerException;
 import software.amazon.awssdk.services.codeartifact.model.ListPackageVersionAssetsRequest;
 import software.amazon.awssdk.services.codeartifact.model.ListPackageVersionAssetsResponse;
 import software.amazon.awssdk.services.codeartifact.model.ListRepositoriesInDomainRequest;
 import software.amazon.awssdk.services.codeartifact.model.PackageFormat;
+import software.amazon.awssdk.services.codeartifact.model.PublishPackageVersionRequest;
 import software.amazon.awssdk.services.codeartifact.model.RepositorySummary;
+import software.amazon.awssdk.services.codeartifact.model.ServiceQuotaExceededException;
+import software.amazon.awssdk.services.codeartifact.model.ThrottlingException;
 
 import java.io.File;
 import java.io.IOException;
@@ -82,12 +92,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static java.util.stream.Collectors.toMap;
+import static software.amazon.awssdk.services.codeartifact.model.PackageFormat.*;
 
 @ApplicationScoped
 @Slf4j
@@ -100,6 +110,9 @@ public class AWSClient {
     private final AWSApplicationConfig config;
 
     private final ConstrainedExecutor executor;
+
+    // separate executor just for publish-package-version API because it is much more rate-limited than other endpoints
+    private final ConstrainedExecutor publishGenericExecutor;
 
     private final ExecutorService regularExecutor;
     private final ManagedExecutor regularerExecutor;
@@ -127,6 +140,7 @@ public class AWSClient {
         this.regularerExecutor = regularerExecutor;
         this.tokenService = tokenService;
         this.executor = new ConstrainedExecutor(regularerExecutor, scheduler, config, AWSClient::getIsRateLimited, null, AWSClient::shouldRetry);
+        this.publishGenericExecutor = new ConstrainedExecutor(regularerExecutor, scheduler, config.publish(), AWSClient::getIsRateLimited, null, AWSClient::shouldRetry);
         this.regularExecutor = delegate;
         this.processSemaphore = new Semaphore(config.subprocessConcurrencyLimit(), true);
         this.mavenContext = new BootstrapMavenContext(BootstrapMavenContext.config()
@@ -151,20 +165,31 @@ public class AWSClient {
     private static boolean getIsRateLimited(Either<? extends Throwable, ?> either) {
         if (either.isRight() && either.get() instanceof Results res) {
             boolean toReturn = res.haveErrors() && res.errors().stream().anyMatch(err -> err instanceof AWSError.RateLimitExceeded);
-            if (toReturn) log.warn("Rate limited out of object {}", res);
+            if (toReturn)
+                log.trace("Rate limited out of object {}", res);
             return toReturn;
         }
+        if (either.isLeft() && either.getLeft() instanceof ThrottlingException) {
+            return true;
+        }
+
         return false;
     }
 
     private static Set<Class<? extends UploadResult.Error>> retryOn =
-        Set.of(AWSError.RateLimitExceeded.class, AWSError.ConnectionError.class, AWSError.InvalidToken.class);
+        Set.of(AWSError.RateLimitExceeded.class,
+                GenericError.UnknownError.class,
+                AWSError.ConnectionError.class,
+                AWSError.InvalidToken.class,
+                AWSError.ServerError.class,
+                GenericError.Timeout.class);
 
     private static boolean shouldRetry(Object result) {
         boolean toReturn = result instanceof Results<?> res
             && res.haveErrors()
             && res.errors().stream().anyMatch(err -> retryOn.contains(err.getClass()));
-        if (toReturn) log.warn("Retrying AWS requests for object {}.", result);
+        if (toReturn)
+            log.trace("Retrying AWS requests for object {}.", result);
         return toReturn;
     }
 
@@ -210,14 +235,19 @@ public class AWSClient {
                 mvn.getMvnIdentifier().getGroupId(),
                 mvn.getMvnIdentifier().getArtifactId(),
                 mvn.getMvnIdentifier().getVersionString(),
-                PackageFormat.MAVEN);
+                MAVEN);
             case NpmAsset npm -> getPackageAssets(
                 repository,
                 npm.getScope(),
                 npm.getUnscopedName(),
                 npm.getNpmIdentifier().getVersionString(),
-                PackageFormat.NPM);
-            case GPAsset gp -> throw new NotImplementedYet();
+                NPM);
+            case GPAsset gp -> getPackageAssets(
+                repository,
+                gp.getNamespace(),
+                gp.getPackageName(),
+                gp.getPackageVersion(),
+                GENERIC);
         };
     }
 
@@ -276,6 +306,93 @@ public class AWSClient {
                 default -> new Result.Error.UncaughtException(error);
             };
         }
+    }
+
+    public CompletableFuture<Results<GPAsset>> uploadProjectGP(GPNPVAssets assets, Path assetDir, String awsRepoURL, String repositoryId) {
+        var results = new Results<GPAsset>();
+
+        GPAsset asset = assets.assets().getFirst();
+        String namespace = asset.getNamespace();
+        String packageName = asset.getPackageName();
+        String packageVersion = asset.getPackageVersion();
+        String filename = asset.getFilename();
+        String sha256 = asset.getSha256();
+        Path assetPath = assetDir.resolve(filename);
+        String deployedUrl = asset.generateDeployUrlFrom(awsRepoURL, config.domain(), repositoryId);
+
+        if (config.dryRun()) {
+            log.info("Would upload {} into url={} and repoId={} with these params: namespace={} packageName={} packageVersion={} filename={} sha256={}",
+                    filename, awsRepoURL, repositoryId, namespace, packageName, packageVersion, filename, sha256);
+            results.addSuccess(new Success<>(new AssetUpload<>(asset, deployedUrl, repositoryId, ZonedDateTime.now())));
+            return CompletableFuture.completedFuture(results);
+        }
+
+        return publishGenericExecutor.supplyAsync(1, () -> nativeClient.publishPackageVersion(
+                    PublishPackageVersionRequest.builder()
+                        .format(GENERIC)
+                        .domain(config.domain())
+                        .domainOwner(config.owner())
+                        .repository(repositoryId)
+                        .namespace(namespace)
+                        .packageValue(packageName)
+                        .packageVersion(packageVersion)
+                        .assetName(filename)
+                        .assetSHA256(sha256)
+                        .build(), AsyncRequestBody.fromFile(assetPath))
+                    .thenAccept((ign) -> {
+                        log.trace("Results, Rate-limiter Metrics: waiting: {} permissions: {}",
+                                publishGenericExecutor.getNumberOfWaitingThreads(),
+                                publishGenericExecutor.getNumberOfPermissions());
+                    })
+                    .thenApply((response) -> {
+                        results.addSuccess(new Success<>(new AssetUpload<>(asset, deployedUrl, repositoryId, ZonedDateTime.now())));
+
+                        return results;
+                    })
+                    .exceptionally(error -> handleAWSUploadErrors(error, results, asset, repositoryId, deployedUrl))
+                    .join())
+                .thenApply(result -> verifyResult(result, assets.assets(), new CircularFifoQueue<>(), awsRepoURL, repositoryId));
+    }
+
+    <T extends Asset> Results<T> handleAWSUploadErrors(Throwable error, Results<T> results, T asset, String repositoryId, String deployedUrl) {
+        results.addError(getAWSError(error, results, asset, repositoryId, deployedUrl));
+        return results;
+}
+
+    private <T extends Asset> UploadResult.Error<T> getAWSError(Throwable error, Results<T> results, T asset, String repositoryId, String deployedUrl) {
+        return switch (error) {
+            // server connection established
+            case ConflictException conf -> {
+                // retry for this type of conflict results in success, so we're yielding RateLimit
+                if (conf.awsErrorDetails().errorMessage() != null && conf.awsErrorDetails().errorMessage().startsWith("Attempt to concurrently modify package")) {
+                    yield new AWSError.RateLimitExceeded<>(asset);
+                }
+
+                log.error("Conflict encountered, looky here {} ", conf.toString());
+                yield new AWSError.Conflict<>(asset, deployedUrl, repositoryId, ZonedDateTime.now());
+            }
+            case ServiceQuotaExceededException quota -> new AWSError.QuotaExceeded<>(asset);
+            case AccessDeniedException access -> new AWSError.InvalidToken<>(asset);
+            case ThrottlingException throttle -> new AWSError.RateLimitExceeded<>(asset);
+            case InternalServerException server -> new GenericError.UnknownError<>(asset, server.getMessage());
+            // base
+            case CodeartifactException caException -> new GenericError.UnknownError<>(asset, caException.getMessage());
+
+            // internal client error
+            case ApiCallTimeoutException time -> new GenericError.Timeout<>(asset);
+            case ApiCallAttemptTimeoutException time -> new GenericError.Timeout<>(asset);
+            // base
+            case SdkClientException proc -> new GenericError.UncaughtException<>(asset, proc);
+
+            // base exception to all above
+            case SdkException dunno -> new AWSError.ConnectionError<>(asset, dunno.getMessage());
+
+            // if wrapped in completion -> recurse
+            case CompletionException e -> getAWSError(e.getCause(), results, asset, repositoryId, deployedUrl);
+
+            case null -> throw new UnsupportedOperationException();
+            default -> new GenericError.UncaughtException<>(asset, error);
+        };
     }
 
     public CompletableFuture<Results<MavenAsset>> uploadProjectMvn2(MvnGAVAssets gav,
@@ -741,7 +858,7 @@ public class AWSClient {
         return CompletableFuture.completedFuture(results);
     }
 
-    private List<String> generateNpmCommand(NpmNVAssets nv, String npmrcPath) {
+    private List<String> generateNpmCommand(NpmNVAssets nv, String npmrcPath, String awsRepoUrl) {
         List<String> command = new ArrayList<>(List.of("npm"));
 
         addNpmrc(command, npmrcPath);

@@ -148,4 +148,9 @@ public class BuildStat extends PanacheEntity {
         }
     }
     //endregion
+
+    @Override
+    public String toString() {
+        return "BuildStat: " + this.getBuildID();
+    }
 }

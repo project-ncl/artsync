@@ -38,7 +38,7 @@ import static org.commonjava.indy.pkg.npm.model.NPMPackageTypeDescriptor.NPM_PKG
 
 @ApplicationScoped
 public class BuildArtifactCollector {
-    private static final Logger LOG = LoggerFactory.getLogger(PncService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(BuildArtifactCollector.class);
     private final PncService pnc;
     private final IndyService indy;
     private final ExecutorService executor;
@@ -105,6 +105,7 @@ public class BuildArtifactCollector {
     private <C extends Asset,B extends Asset.AssetBuilder<C, B>> Asset.AssetBuilder<C, B> fillCommon(Asset.AssetBuilder<C, B> builder, ArtTuple artifact) {
         String filename = parseFilename(artifact);
         URI downloadURI = parseDownloadURI(artifact, filename);
+        URI originURI = parseOriginURI(artifact, filename);
         Build build = artifact.pnc().getBuild();
         return builder
             .size(artifact.pnc().getSize())
@@ -118,12 +119,32 @@ public class BuildArtifactCollector {
             .sourceRepository(artifact.pnc().getTargetRepository())
             .originBuildID(build != null ? build.getId() : null)
             .processingBuildID(artifact.processingBuildId())
+            .originURI(originURI)
             .downloadURI(downloadURI);
     }
 
+    private URI parseOriginURI(ArtTuple artifact, String filename) {
+        String originUrl = artifact.pnc().getOriginUrl();
+        if (originUrl == null) {
+           return null;
+        }
+
+        if (originUrl.contains(filename)) {
+            return URI.create(originUrl);
+        }
+        LOG.warn("Origin URL does not equal indy deployed filename.\n url: {} file: {}", originUrl, filename);
+
+        if (artifact.indy().isPresent()) {
+            return URI.create(artifact.indy().get().getOriginUrl());
+        }
+
+        return null;
+    }
+
     private static URI parseDownloadURI(ArtTuple artifact, String filename) {
-        String publicUrl = artifact.pnc().getPublicUrl();
-        if (publicUrl.contains(filename)) {
+        Artifact art = artifact.pnc();
+        String publicUrl = art.getPublicUrl();
+        if (publicUrl.contains(filename) || (art.getTargetRepository().getRepositoryType() == RepositoryType.GENERIC_PROXY && art.getIdentifier().contains(filename))) {
             return URI.create(publicUrl);
         }
         LOG.warn("Public URL does not equal indy deployed filename.\n url: {} file: {}", publicUrl, filename);
@@ -173,7 +194,10 @@ public class BuildArtifactCollector {
         return fillCommon(NpmAsset.builder(), artifact).build();
     }
     private GPAsset convertToGPAsses(ArtTuple artifact) {
-        return fillCommon(GPAsset.builder(), artifact).build();
+        return fillCommon(GPAsset.builder(), artifact)
+                .identifier(GPAsset.computeIdentifier(artifact.pnc.getIdentifier(), artifact.processingBuildId(), parseOriginURI(artifact, parseFilename(artifact)), GPAsset.handleSha256(artifact.pnc.getIdentifier(), artifact.pnc.getSha256())))
+                .sha256(GPAsset.handleSha256(artifact.pnc.getIdentifier(), artifact.pnc.getSha256()))
+                .build();
     }
 
     /**
@@ -211,6 +235,10 @@ public class BuildArtifactCollector {
                 ArtifactPathInfo gav = ArtifactPathInfo.parse(art.getDeployPath());
                 String identifier = gav.getArtifact().toString();
                 artifactMap.put(identifier, art.toBuilder().identifier(identifier).build());
+            } else if (art.getTargetRepository().getRepositoryType() == RepositoryType.GENERIC_PROXY) {
+                // GENERIC_PROXY artifacts do not have unique identifiers, we have to make it unique
+                String identifier = art.getIdentifier() + "|" + processingBuildId.buildID;
+                artifactMap.put(identifier, art);
             } else {
                 artifactMap.put(art.getIdentifier(), art);
             }
@@ -222,7 +250,7 @@ public class BuildArtifactCollector {
                     // workaround duplicate upload entries and leave the 'build-' version of the duplicates
                     case String s when s.contains("build-") -> entryDTOMap.put(computeIdentifier(prev), prev);
                     case String s when s.contains("pnc-builds") -> {}
-                    default -> LOG.warn("Unknown duplicate in tracking report found: " + prev);
+                    default -> LOG.warn("Unknown duplicate in tracking report found: {}", prev);
                 }
             }
         });
