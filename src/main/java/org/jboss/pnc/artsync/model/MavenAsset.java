@@ -20,11 +20,9 @@ public final class MavenAsset extends Asset {
     private final Label label = computeLabel(mvnIdentifier);
     public static final Set<String> uncommonTypes = Set.of("exe", "xsd", "xjb", "yml", "properties", "json", "zip",
         "tar.gz", "ear", "war", "txt", "tar.bz2", "xml", "signature", "kar", "empty", "html", "pdf", "cfg", "rar",
-        "xml.gz", "yaml", "wsdl", "jdocbook-style", "js", "key", "so", "target");
+        "xml.gz", "yaml", "wsdl", "jdocbook-style", "js", "key", "so", "target", "rpm", "spec");
 
 
-    public MavenAsset(String identifier, String artifactId, String filename, long size, String md5, String sha1, String sha256, URI downloadURI, TargetRepository sourceRepository, String originBuildID, BuildStat processingBuildID) {
-        super(identifier, artifactId, RepositoryType.MAVEN, filename, size, md5, sha1, sha256, downloadURI, sourceRepository, originBuildID, processingBuildID);
     public MavenAsset(String identifier, String artifactId, String filename, long size, String md5, String sha1, String sha256, URI downloadURI, URI originURI, TargetRepository sourceRepository, String originBuildID, BuildStat processingBuildID) {
         super(identifier, artifactId, RepositoryType.MAVEN, filename, size, md5, sha1, sha256, downloadURI, originURI, sourceRepository, originBuildID, processingBuildID);
     }
