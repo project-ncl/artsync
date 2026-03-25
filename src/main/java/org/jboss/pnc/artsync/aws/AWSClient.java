@@ -125,7 +125,9 @@ public class AWSClient {
     private final Pattern MVN_ERROR = Pattern.compile("^\\[ERROR] Failed to execute goal org\\.apache\\.maven\\.plugins:maven-deploy-plugin:3\\.1\\.1:deploy-file.+ status code: (?<status>.+), reason phrase: (?<reason>.+) -> .*$");
     private final Pattern NPM_UPLOAD = Pattern.compile("\\+ (?<uploadArtifact>.+)");
     private final Pattern NPM_ERROR = Pattern.compile("^npm ERR! code (?<status>.+)$");
+    private final Pattern NPM_ERROR_2 = Pattern.compile("^npm error code (?<status>.+)$");
     private final Pattern NPM_NOT_FOUND = Pattern.compile("^npm ERR! 404 Not Found - GET (?<notFoundUrl>.+)$");
+    private final Pattern NPM_NOT_FOUND_2 = Pattern.compile("^npm error 404 Not Found - GET (?<notFoundUrl>.+)$");
     private final BootstrapMavenContext mavenContext;
     private final IListenListener artifactEventListener;
 
@@ -749,7 +751,7 @@ public class AWSClient {
                                                               String npmrcPath) {
         var results = new Results<NpmAsset>();
 
-        var npmCommand = generateNpmCommand(nv, npmrcPath);
+        var npmCommand = generateNpmCommand(nv, npmrcPath, awsRepoURL);
         Map<String, Supplier<String>> env = Map.of("CODEARTIFACT_AUTH_TOKEN", tokenService::getToken);
         if (config.dryRun()) {
             return printCommand(npmCommand, nv, assetDir, env, results, repositoryId, awsRepoURL);
@@ -792,40 +794,58 @@ public class AWSClient {
 
     private boolean notFoundError(String line, Results<NpmAsset> agg, List<NpmAsset> assets) {
         Matcher error = NPM_NOT_FOUND.matcher(line);
+        Matcher newError = NPM_NOT_FOUND_2.matcher(line);
         if (error.matches()) {
-            log.info("Indy missing Asset: " + line);
-            String indyUrl = error.group("notFoundUrl");
-            assets.forEach(ass -> agg.addError(new UploadResult.Error.IndyError.NotFound<>(ass, indyUrl)));
-
-            return true;
+            return addNotFound(line, agg, assets, error);
         }
+
+        if (newError.matches()) {
+            return addNotFound(line, agg, assets, newError);
+        }
+
         return false;
+    }
+
+    private static boolean addNotFound(String line, Results<NpmAsset> agg, List<NpmAsset> assets, Matcher error) {
+        log.info("Indy missing Asset: {}", line);
+        String indyUrl = error.group("notFoundUrl");
+        assets.forEach(ass -> agg.addError(new UploadResult.Error.IndyError.NotFound<>(ass, indyUrl)));
+
+        return true;
     }
 
     private boolean httpStatusError(String line, Results<NpmAsset> agg, List<NpmAsset> assets, Queue<String> contextBuffer, String repositoryId, String awsRepoUrl) {
         Matcher error = NPM_ERROR.matcher(line);
+        Matcher newNpmError = NPM_ERROR_2.matcher(line);
         if (error.matches()) {
-            log.info("Error: " + line);
-            String statusCode = error.group("status");
-
-            // Has its own pattern
-            if (statusCode.equals("E404")) {
-                return false;
-            }
-
-            assets.forEach(ass -> agg.addError(switch (statusCode) {
-                case "E400" -> new GenericError.CorruptedData<>(ass, joinBuffer(contextBuffer));
-                case "E402" -> new AWSError.QuotaExceeded<>(ass);
-                case "ENEEDAUTH" -> new AWSError.InvalidToken<>(ass);
-                // Has its own pattern
-                case "E409" -> new AWSError.Conflict<>(ass, awsRepoUrl, repositoryId, ZonedDateTime.now());
-                case "E429" -> new AWSError.RateLimitExceeded<>(ass);
-                case "E500" -> new AWSError.ServerError<>(ass, joinBuffer(contextBuffer));
-                default -> new GenericError.UnknownError<>(ass, joinBuffer(contextBuffer));
-            }));
-            return true;
+            return addError(line, agg, assets, contextBuffer, repositoryId, awsRepoUrl, error);
+        }
+        if (newNpmError.matches()) {
+            return addError(line, agg, assets, contextBuffer, repositoryId, awsRepoUrl, newNpmError);
         }
         return false;
+    }
+
+    private static boolean addError(String line, Results<NpmAsset> agg, List<NpmAsset> assets, Queue<String> contextBuffer, String repositoryId, String awsRepoUrl, Matcher error) {
+        log.info("Error: " + line);
+        String statusCode = error.group("status");
+
+        // Has its own pattern
+        if (statusCode.equals("E404")) {
+            return false;
+        }
+
+        assets.forEach(ass -> agg.addError(switch (statusCode) {
+            case "E400" -> new GenericError.CorruptedData<>(ass, joinBuffer(contextBuffer));
+            case "E402" -> new AWSError.QuotaExceeded<>(ass);
+            case "ENEEDAUTH" -> new AWSError.InvalidToken<>(ass);
+            // Has its own pattern
+            case "E409" -> new AWSError.Conflict<>(ass, awsRepoUrl, repositoryId, ZonedDateTime.now());
+            case "E429" -> new AWSError.RateLimitExceeded<>(ass);
+            case "E500" -> new AWSError.ServerError<>(ass, joinBuffer(contextBuffer));
+            default -> new GenericError.UnknownError<>(ass, joinBuffer(contextBuffer));
+        }));
+        return true;
     }
 
     private static String joinBuffer(Queue<String> buffer) {
@@ -863,10 +883,16 @@ public class AWSClient {
 
         addNpmrc(command, npmrcPath);
 
+        addRegistry(command, awsRepoUrl);
+
         addOthers(command);
 
         addAssets(command, nv);
         return command;
+    }
+
+    private void addRegistry(List<String> command, String awsRepoUrl) {
+        command.add("--registry=" + awsRepoUrl);
     }
 
     private void addNpmrc(List<String> command, String npmrcPath) {
@@ -1045,18 +1071,19 @@ public class AWSClient {
                                                      Map<String, Supplier<String>> extraEnvVars,
                                                      Path workingDirectory,
                                                      int permits) {
-        try {
-            processSemaphore.acquire();
-            return processHandleInternal(command,
-                stdoutLineConsumer,
-                stderrLineConsumer,
-                extraEnvVars,
-                workingDirectory,
-                permits).whenComplete((ign, thr) -> processSemaphore.release());
-        } catch (InterruptedException e) {
-            processSemaphore.release();
-            return CompletableFuture.failedFuture(e);
-        }
+        return CompletableFuture.runAsync(() -> {
+                    try {
+                        processSemaphore.acquire();
+                    } catch (InterruptedException e) {
+                        throw new IllegalStateException("", e);
+                    }}, regularExecutor)
+                .thenCompose((ign) -> processHandleInternal(command,
+                        stdoutLineConsumer,
+                        stderrLineConsumer,
+                        extraEnvVars,
+                        workingDirectory,
+                        permits))
+                .whenComplete((ign, thr) -> processSemaphore.release());
     }
 
     private CompletableFuture<Integer> processHandleInternal(
@@ -1086,7 +1113,7 @@ public class AWSClient {
         var processStartFuture = executor.supplyAsync(permits, () -> {
             try {
                 Process start = builder.start();
-                log.info("Starting process.");
+                log.trace("Starting process.");
                 var stdoutReader = CompletableFuture.runAsync(() -> {
                     try (var stdout = start.inputReader()) {
                         String line;
